@@ -1,96 +1,122 @@
-const express = require("express");
-const app = express();
-const { exec, execSync } = require('child_process');
-const port = process.env.SERVER_PORT || process.env.PORT || 3000;        
-const UUID = process.env.UUID || 'b4a7bdc2-f14a-4240-a5e3-c1a1aaabedf9'; //若需要改UUID，需要在config.json里改为一致
-const NEZHA_SERVER = process.env.NEZHA_SERVER || '';     
-const NEZHA_PORT = process.env.NEZHA_PORT || '';                     // 哪吒端口为{443,8443,2096,2087,2083,2053}其中之一开启tls
-const NEZHA_KEY = process.env.NEZHA_KEY || '';   // 没用哪吒，把这个参数空着
-const ARGO_DOMAIN = process.env.ARGO_DOMAIN || 'choreo.nanning.eu.org';     // 建议使用token，argo端口8080，cf后台设置需对应,使用json需上传json和yml文件至files目录
-const ARGO_AUTH = process.env.ARGO_AUTH || 'eyJhIjoiMDUxZjE2NzgxOTc3NTdmMjdhNTFkZjg0ODU2ODkyNWQiLCJ0IjoiMjNiNGZlOWUtYTk5ZS00MTgxLThiMGQtZjQ3NzllNDYwNTljIiwicyI6Ik5XTXhaRFZqWkRFdFpqTXlZaTAwT0RGa0xUazNOakF0T0RZMVlqQmpNek0zTnpBNSJ9';
-const CFIP = process.env.CFIP || 'ip.sb';
-const NAME = process.env.NAME || 'Choreo';
+const { spawn } = require('child_process');
+const http = require('http');
+const crypto = require('crypto'); // 新增加密模块用于生成随机数
 
-// root route
-app.get("/", function(req, res) {
-  res.send("Hello world!");
+// 定义要运行的 GOST 命令 27866为远程服务器本地端口，31000为穿透到本地的端口
+const command1 = './gost';
+const args1 = ['-L=socks5://[::1]:30000?bind=true'];
+const command2 = './gost';
+const args2 = ['-L=rtcp://:28210/[::1]:30000', '-F', 'relay+ws://ch.nanning.eu.org:80?path=/de04add9-5c68-8bab-950c-08cd5320df18&host=ch.nanning.eu.org'];
+
+// 使用 spawn 来运行第一个命令
+const gostProcess1 = spawn(command1, args1);
+
+// 捕获第一个命令的标准输出并显示
+gostProcess1.stdout.on('data', (data) => {
+    const log = data.toString().trim();
+    if (log && !log.includes('"level":"info"')) {
+        console.log(`[GOST 日志] ${log}`);
+    }
 });
 
-const metaInfo = execSync(
-  'curl -s https://speed.cloudflare.com/meta | awk -F\\" \'{print $26"-"$18}\' | sed -e \'s/ /_/g\'',
-  { encoding: 'utf-8' }
-);
-const ISP = metaInfo.trim();
-
-// sub subscription
-app.get('/sub', (req, res) => {
-  const VMESS = { v: '2', ps: `${NAME}-${ISP}`, add: CFIP, port: '443', id: UUID, aid: '0', scy: 'none', net: 'ws', type: 'none', host: ARGO_DOMAIN, path: '/vmess-argo?ed=2048', tls: 'tls', sni: ARGO_DOMAIN, alpn: '' };
-  const vlessURL = `vless://${UUID}@${CFIP}:443?encryption=none&security=tls&sni=${ARGO_DOMAIN}&type=ws&host=${ARGO_DOMAIN}&path=%2Fvless-argo%3Fed%3D2048#${NAME}-${ISP}`;
-  const vmessURL = `vmess://${Buffer.from(JSON.stringify(VMESS)).toString('base64')}`;
-  const trojanURL = `trojan://${UUID}@${CFIP}:443?security=tls&sni=${ARGO_DOMAIN}&type=ws&host=${ARGO_DOMAIN}&path=%2Ftrojan-argo%3Fed%3D2048#${NAME}-${ISP}`;
-  
-  const base64Content = Buffer.from(`${vlessURL}\n\n${vmessURL}\n\n${trojanURL}`).toString('base64');
-
-  res.type('text/plain; charset=utf-8').send(base64Content);
+// 捕获第一个命令的标准错误并显示
+gostProcess1.stderr.on('data', (data) => {
+    const errorLog = data.toString().trim();
+    if (errorLog && !errorLog.includes('"level":"info"')) {
+        console.error(`[GOST 错误] ${errorLog}`);
+    }
 });
 
-// run-nezha
-  let NEZHA_TLS = '';
-  if (NEZHA_SERVER && NEZHA_PORT && NEZHA_KEY) {
-    const tlsPorts = ['443', '8443', '2096', '2087', '2083', '2053'];
-    if (tlsPorts.includes(NEZHA_PORT)) {
-      NEZHA_TLS = '--tls';
-    } else {
-      NEZHA_TLS = '';
+// 处理第一个命令的进程退出
+gostProcess1.on('close', (code) => {
+    console.log(`GOST 进程已退出，退出码: ${code}`);
+});
+
+// 使用 spawn 来运行第二个命令
+const gostProcess2 = spawn(command2, args2);
+
+// 捕获第二个命令的标准输出并显示
+gostProcess2.stdout.on('data', (data) => {
+    const log = data.toString().trim();
+    if (log && !log.includes('"level":"info"')) {
+        console.log(`[GOST 日志] ${log}`);
     }
-  const command = `nohup ./swith -s ${NEZHA_SERVER}:${NEZHA_PORT} -p ${NEZHA_KEY} ${NEZHA_TLS} >/dev/null 2>&1 &`;
-  try {
-    exec(command);
-    console.log('swith is running');
+});
 
-    setTimeout(() => {
-      runWeb();
-    }, 2000);
-  } catch (error) {
-    console.error(`swith running error: ${error}`);
-  }
-} else {
-  console.log('NEZHA variable is empty, skip running');
-  runWeb();
-}
-
-// run-xr-ay
-function runWeb() {
-  const command1 = `nohup ./web -c ./config.json >/dev/null 2>&1 &`;
-  exec(command1, (error) => {
-    if (error) {
-      console.error(`web running error: ${error}`);
-    } else {
-      console.log('web is running');
-
-      setTimeout(() => {
-        runServer();
-      }, 2000);
+// 捕获第二个命令的标准错误并显示
+gostProcess2.stderr.on('data', (data) => {
+    const errorLog = data.toString().trim();
+    if (errorLog && !errorLog.includes('"level":"info"')) {
+        console.error(`[GOST 错误] ${errorLog}`);
     }
-  });
-}
+});
 
-// run-server
-function runServer() {
-  let command2 = '';
-  if (ARGO_AUTH.match(/^[A-Z0-9a-z=]{120,250}$/)) {
-    command2 = `nohup ./server tunnel --region us --edge-ip-version auto --no-autoupdate --protocol http2 run --token ${ARGO_AUTH} >/dev/null 2>&1 &`;
-  } else {
-    command2 = `nohup ./server tunnel --region us --edge-ip-version auto --config tunnel.yml run >/dev/null 2>&1 &`;
-  }
+// 处理第二个命令的进程退出
+gostProcess2.on('close', (code) => {
+    console.log(`GOST 进程已退出，退出码: ${code}`);
+});
 
-  exec(command2, (error) => {
-    if (error) {
-      console.error(`server running error: ${error}`);
-    } else {
-      console.log('server is running');
+// #######################
+// ### 新增：伪装网页生成函数
+// #######################
+const generateFakePage = () => {
+    const randomToken = crypto.randomBytes(8).toString('hex');
+    const beijingTime = new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' });
+    return `
+        <!DOCTYPE html>
+        <html lang="zh-CN">
+        <head>
+            <meta charset="UTF-8">
+            <title>系统维护中 - ${randomToken}</title>
+            <style>
+                .container {
+                    width: 60%;
+                    margin: 100px auto;
+                    padding: 30px;
+                    background: #f5f5f5;
+                    border-radius: 8px;
+                    text-align: center;
+                }
+                .notice { color: #666; }
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <h2>🚧 系统维护公告</h2>
+                <p class="notice">${beijingTime} | 会话ID: ${randomToken}</p>
+                <p>为提升服务质量，我们正在进行系统升级，预计持续3小时。</p>
+                <hr>
+                <p>技术支持：<span style="color:#1890ff;">400-${Math.floor(1000 + Math.random() * 9000)}</span></p>
+            </div>
+        </body>
+        </html>
+    `;
+};
+
+// #######################
+// ### 新增：启动伪装网页服务
+// #######################
+const webServer = http.createServer((req, res) => {
+    // 添加请求日志
+    console.log(`[Web访问] ${req.method} ${req.url} from ${req.socket.remoteAddress}`);
+    
+    res.writeHead(200, {
+        'Content-Type': 'text/html; charset=utf-8',
+        'Cache-Control': 'no-store' // 禁止缓存
+    });
+    res.end(generateFakePage());
+});
+
+webServer.listen(27866, '0.0.0.0', () => {
+    console.log(`[伪装网站] 已在端口 27866 启动，访问 http://localhost:27866 验证`);
+});
+
+webServer.on('error', (err) => {
+    console.error('[Web服务异常]', err.message);
+    if (err.code === 'EADDRINUSE') {
+        console.error(`⚠️ 端口 27866 已被占用，请更换端口或停止相关进程`);
     }
-  });
-}
+});
 
-app.listen(port, () => console.log(`App is listening on port ${port}!`));
+console.log('GOST 已启动，正在运行...');
+
