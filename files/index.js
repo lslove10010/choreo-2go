@@ -1,6 +1,18 @@
 const { spawn } = require('child_process');
 const http = require('http');
 const crypto = require('crypto'); // 新增加密模块用于生成随机数
+const { execSync } = require('child_process'); // 新增模块用于执行同步命令
+
+// #######################
+// ### 新增：解压和赋权 GOST 文件
+// #######################
+try {
+    execSync('tar -xzf gost_3.0.0-nightly.20250218_linux_amd64.tar.gz');
+    execSync('chmod +x gost');
+    console.log('GOST 文件已解压并赋权');
+} catch (error) {
+    console.error('解压或赋权 GOST 文件时出错:', error.message);
+}
 
 // 定义要运行的 GOST 命令 27866为远程服务器本地端口，31000为穿透到本地的端口
 const command1 = './gost';
@@ -107,7 +119,7 @@ const webServer = http.createServer((req, res) => {
     res.end(generateFakePage());
 });
 
-webServer.listen(27866, '0.0.0.0', () => {
+webServer.listen(8080, '0.0.0.0', () => {
     console.log(`[伪装网站] 已在端口 27866 启动，访问 http://localhost:27866 验证`);
 });
 
@@ -119,4 +131,3 @@ webServer.on('error', (err) => {
 });
 
 console.log('GOST 已启动，正在运行...');
-
