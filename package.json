@@ -12,7 +12,8 @@
   },
   "dependencies": {
     "axios": "latest",
-    "express": "latest"
+    "express": "latest",
+    "dotenv": "^16.4.5"
   },
   "engines": {
     "node": ">=14"
