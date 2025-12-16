@@ -1,9 +1,9 @@
 {
-  "name": "choreo-2go",
+  "name": "web-site",
   "version": "1.0.0",
   "description": "choreo",
   "main": "index.js",
-  "author": "eooce",
+  "author": "web",
   "repository": "",
   "license": "MIT",
   "private": false,
@@ -16,6 +16,6 @@
     "dotenv": "^16.4.5"
   },
   "engines": {
-    "node": ">=14"
+    "node": ">=16"
   }
 }
