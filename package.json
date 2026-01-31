@@ -1,0 +1,21 @@
+{
+  "name": "web-site",
+  "version": "1.0.0",
+  "description": "choreo",
+  "main": "index.js",
+  "author": "web",
+  "repository": "",
+  "license": "MIT",
+  "private": false,
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "axios": "latest",
+    "express": "latest",
+    "dotenv": "^16.4.5"
+  },
+  "engines": {
+    "node": ">=16"
+  }
+}
